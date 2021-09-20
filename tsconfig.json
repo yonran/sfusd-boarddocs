@@ -1,0 +1,11 @@
+{
+  // https://github.com/tsconfig/bases/blob/main/bases/node16.json
+  "extends": "@tsconfig/node16/tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": [
+      "ES2020",
+      "DOM",
+    ],
+  }
+}
