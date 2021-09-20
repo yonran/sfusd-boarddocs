@@ -5,6 +5,7 @@ import makeDir from 'make-dir';
 import fetch from 'node-fetch';
 import * as path from 'path';
 import puppeteerCore from 'puppeteer-core';
+import sleep from 'sleep-promise';
 import yargs from 'yargs';
 
 import { BrowserWrap, findExistingTabWithDomain, PageWrap } from './puppeteerUtil';
@@ -133,10 +134,8 @@ async function main() {
                         if (agendaButton !== null) {
                             debug('clicking agenda for', meetingSlug);
                             await agendaButton.click();
-                            // Seems like the agenda flashes the old agenda; wait for a setImmediate cycle
-                            await page.waitForFunction(async () => {
-                                return true;
-                            });
+                            // Seems like it flashes the old agenda before the new one; wait for few hundred ms
+                            await sleep(500);
                         } else {
                             throw Error('Could not find agenda button for ' + meetingSlug);
                         }
