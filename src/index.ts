@@ -47,7 +47,7 @@ async function main() {
             browserWSEndpoint: args.browserWSEndpoint,
             // set defaultViewport to null explicitly; don't change the viewport while attached
             defaultViewport: null,
-            slowMo: 100,
+            // slowMo: 100,
         }),
         false
     );
@@ -78,6 +78,9 @@ async function main() {
                 if ('Featured' === text) {
                     continue; // skip the featured accordion which is just a subset of other ones
                 }
+                debug('clicking on meetings tab');
+                await page.click('a[href="#tab-meetings"]');
+                debug('clicking on meeting year');
                 await meetingYearHeader.click();
                 const meetingsInYearTabPanel = await meetingYearHeader.evaluateHandle(
                     (x: Element) => x.parentElement?.nextElementSibling
