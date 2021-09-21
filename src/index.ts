@@ -40,6 +40,10 @@ async function main() {
                 string: true,
                 demand: true,
             },
+            query: {
+                description: 'substring of the agenda item to filter on e.g. minutes',
+                string: true,
+            },
         })
         .parseSync();
     const browserWrap = new BrowserWrap(
@@ -221,6 +225,14 @@ async function main() {
                             let itemSlug = agendaItem.itemSlug;
                             let item: IItemManifest;
                             const itemJsonPath = path.join(meetingSlug, itemSlug, 'item.json');
+
+                            if (
+                                args.query !== undefined &&
+                                !itemName.toLowerCase().includes(args.query.toLowerCase())
+                            ) {
+                                debug('skipping agenda item that does not match query', itemName);
+                                continue;
+                            }
 
                             let didOpenItem = false;
                             async function openItem() {
