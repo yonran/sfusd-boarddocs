@@ -8,7 +8,7 @@ import puppeteerCore from 'puppeteer-core';
 import sleep from 'sleep-promise';
 import yargs from 'yargs';
 
-import { BrowserWrap, findExistingTabWithDomain, PageWrap } from './puppeteerUtil';
+import { BrowserWrap, findExistingTabWithDomain, PageWrap, RequestsWaiter } from './puppeteerUtil';
 import type { IItemManifest } from './types/ItemManifest';
 import { ItemManifest } from './types/ItemManifest';
 import type { IMeetingManifest } from './types/MeetingManifest';
@@ -30,6 +30,7 @@ const MONTH_NAMES = [
     'Nov',
     'Dec',
 ] as const;
+const TIMEOUT = 30000;
 
 async function main() {
     const args = yargs(process.argv.slice(2))
@@ -69,7 +70,9 @@ async function main() {
 
             debug('clicking meetings tab');
             await page.bringToFront(); // clicking etc. doesn't work unless the page is activated
+            const requestsWaiter = new RequestsWaiter(page, 'meetings');
             await page.click('a[href="#tab-meetings"]');
+            await requestsWaiter.wait(TIMEOUT);
             const meetingYearHeaders = await page.$$<HTMLElement>(
                 '#meetings > #meeting-accordion > h3.ui-accordion-header > a'
             );
@@ -85,7 +88,9 @@ async function main() {
                 debug('clicking on meetings tab');
                 await page.click('a[href="#tab-meetings"]');
                 debug('clicking on meeting year');
+                const requestsWaiter = new RequestsWaiter(page, 'year');
                 await meetingYearHeader.click();
+                await requestsWaiter.wait(TIMEOUT);
                 const meetingsInYearTabPanel = await meetingYearHeader.evaluateHandle(
                     (x: Element) => x.parentElement?.nextElementSibling
                 );
@@ -116,11 +121,18 @@ async function main() {
                         debug('clicking meetings tab again');
                         await page.click('a[href="#tab-meetings"]');
                         debug('clicking meeting year header again');
-                        await meetingYearHeader.click();
-
+                        {
+                            const requestsWaiter = new RequestsWaiter(page, 'year');
+                            await meetingYearHeader.click();
+                            await requestsWaiter.wait(TIMEOUT);
+                        }
                         debug('clicking on meeting', meetingTitle);
 
-                        await meetingLink.click();
+                        {
+                            const requestsWaiter = new RequestsWaiter(page, 'meeting');
+                            await meetingLink.click();
+                            await requestsWaiter.wait(TIMEOUT);
+                        }
                         // The content panel goes blank while it loads; wait for the share link to show up
                         await page.waitForSelector('#pane-content-meetings button.url');
                         const meetingUrl = await page.$eval('#pane-content-meetings button.url', (x) =>
@@ -140,9 +152,9 @@ async function main() {
                         const agendaButton = await page.$('a#btn-view-agenda');
                         if (agendaButton !== null) {
                             debug('clicking agenda for', meetingSlug);
+                            const requestsWaiter = new RequestsWaiter(page, 'agenda');
                             await agendaButton.click();
-                            // Seems like it flashes the old agenda before the new one; wait for few hundred ms
-                            await sleep(500);
+                            await requestsWaiter.wait(TIMEOUT);
                         } else {
                             throw Error('Could not find agenda button for ' + meetingSlug);
                         }
@@ -215,7 +227,7 @@ async function main() {
                             meetingUrl,
                             categories: categoriesWithItems,
                         };
-                        debug('writing meeting json', meetingManifest);
+                        debug('writing meeting json', JSON.stringify(meetingManifest, undefined, 2));
                         await writeJson(meetingManifestPath, meetingManifest, t.exact(MeetingManifest));
                     }
 
@@ -251,7 +263,9 @@ async function main() {
                                     itemName,
                                     itemLinkSelector
                                 );
+                                const requestsWaiter = new RequestsWaiter(page, 'item');
                                 await page.click(itemLinkSelector);
+                                await requestsWaiter.wait(TIMEOUT);
                                 const selector = `#agenda-content input[name=agenda-item-unique][value="${itemId}"]`;
                                 debug(`waiting for ${selector}`);
                                 await page.waitForSelector(selector);
