@@ -32,6 +32,31 @@ const MONTH_NAMES = [
 ] as const;
 const TIMEOUT = 30000;
 
+interface DateOnly {
+    /** 4-digit year */
+    year: number;
+    /** 1-12 */
+    month: number;
+    /** 1-31 */
+    date: number;
+}
+/** Return a number that can be sorted */
+function daysSinceZero(date: DateOnly) {
+    return Date.UTC(date.year, date.month - 1, date.date) / 3600;
+}
+/** yargs coerce function that converts YYYY-mm-dd string into a DateOnly */
+function coerceDate(x: string | undefined): DateOnly | undefined {
+    if (x === undefined) return undefined;
+    const m = /(?<yyyy>\d{4})-(?<mm>\d{2})-(?<dd>\d{2})/.exec(x);
+    if (m === null || m.groups === undefined) {
+        throw new Error('--since did not match YYYY-mm-dd');
+    }
+    const year = +m.groups.yyyy;
+    const month = +m.groups.mm;
+    const date = +m.groups.dd;
+    return { year, month, date };
+}
+
 async function main() {
     const args = yargs(process.argv.slice(2))
         .options({
@@ -44,6 +69,14 @@ async function main() {
             query: {
                 description: 'substring of the agenda item to filter on e.g. minutes',
                 string: true,
+            },
+            until: {
+                description: 'max date to download',
+                coerce: coerceDate,
+            },
+            since: {
+                description: 'min date to download',
+                coerce: coerceDate,
             },
         })
         .parseSync();
@@ -104,7 +137,7 @@ async function main() {
                 // debug('meetings in year:', text, meetingsInYearTexts);
                 for (const [j, meetingLink] of meetingsInYear.entries()) {
                     const meetingTitle = meetingsInYearTexts[j];
-                    const regexp = /(?<month>\w{3})\ (?<date>\d{1,2}), (?<year>\d{4}) \(\w+\)\n(?<type>.*)/;
+                    const regexp = /(?<month>\w{3})\ (?<date>\d{1,2}), (?<year>\d{4}) \(\w+\)\n?(?<type>.*)/;
                     const titleMatch = regexp.exec(meetingTitle);
                     if (titleMatch === null) {
                         throw Error(`Could not parse ${meetingTitle} using ${regexp}`);
@@ -113,9 +146,20 @@ async function main() {
                     const { month, date, year, type } = titleMatch.groups;
                     const monthZeroIdx = MONTH_NAMES.indexOf(month);
                     const monthOneIdx = monthZeroIdx + 1;
+                    const dateOnly: DateOnly = { year: +year, month: monthOneIdx, date };
                     const Ymd = `${year}-${String(monthOneIdx).padStart(2, '0')}-${date.padStart(2, '0')}`;
                     const meetingSlug = `${Ymd}-${type.replace(/[^\w]+/g, '-').toLowerCase()}`;
                     const meetingManifestPath = path.join(meetingSlug, 'meeting.json');
+                    if (args.until !== undefined && daysSinceZero(dateOnly) > daysSinceZero(args.until)) {
+                        debug('skipping due to --until', meetingSlug);
+                        continue;
+                    } else if (
+                        args.since !== undefined &&
+                        daysSinceZero(dateOnly) < daysSinceZero(args.since)
+                    ) {
+                        debug('skipping due to --since', meetingSlug);
+                        continue;
+                    }
 
                     async function openMeetingTitlePage(): Promise<string | null> {
                         debug('clicking meetings tab again');
@@ -206,7 +250,7 @@ async function main() {
                                             div.querySelector(':scope > span.title') as HTMLElement
                                         ).innerText;
                                         const itemSlug = `${itemOrder}-${itemId}-${itemName}`
-                                            .substr(0, 64)
+                                            .substring(0, 64)
                                             .trim()
                                             .replace(/[^\w]+/g, '-')
                                             .toLowerCase();
