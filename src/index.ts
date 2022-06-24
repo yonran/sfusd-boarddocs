@@ -279,7 +279,7 @@ async function main() {
                         for (const agendaItem of category.items) {
                             const { itemId, itemOrder, itemName } = agendaItem;
                             let itemSlug = agendaItem.itemSlug;
-                            let item: IItemManifest;
+                            let item: IItemManifest | undefined;
                             const itemJsonPath = path.join(meetingSlug, itemSlug, 'item.json');
 
                             if (
@@ -319,11 +319,13 @@ async function main() {
                             if (await fileExists(itemJsonPath)) {
                                 item = await parseFile(itemJsonPath, ItemManifest);
                                 debug('read items json', itemJsonPath);
-                            } else {
+                            }
+                            if (item === undefined || item.innerHtml === undefined) {
                                 await openItem();
                                 const itemUrl = await page.$eval('#agenda-content button.url', (x) =>
                                     x.getAttribute('data-clipboard-text')
                                 );
+                                const innerHtml = await page.$eval('#view-agenda-item', (x) => x.innerHTML);
                                 const links = await page.$$eval(
                                     '#agenda-content a.public-file',
                                     (els: Element[]) =>
@@ -344,6 +346,7 @@ async function main() {
                                     ...agendaItem,
                                     itemUrl,
                                     links,
+                                    innerHtml,
                                 };
                                 debug('writing items json', itemJsonPath);
                                 await writeJson(itemJsonPath, item, t.exact(ItemManifest));

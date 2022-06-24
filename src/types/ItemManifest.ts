@@ -18,6 +18,7 @@ export const ItemParsedFromContent = t.type(
     {
         itemUrl: t.union([t.string, t.null]),
         links: t.array(Link),
+        innerHtml: t.union([t.string, t.undefined]),
     },
     'ItemParsedFromContent'
 );
