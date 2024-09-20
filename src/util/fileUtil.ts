@@ -1,14 +1,15 @@
+import * as fsPromises from 'node:fs/promises';
+
 import * as f from 'fp-ts';
-import * as fsPromises from 'fs/promises';
 import type * as t from 'io-ts';
-import pr from 'io-ts/PathReporter';
+import pr from 'io-ts/lib/PathReporter.js';
 import * as path from 'path';
 
 export async function fileExists(p: string): Promise<boolean> {
     return fsPromises.stat(p).then(
-        (x) => true,
+        () => true,
         (err) => {
-            if (err.code === 'ENOENT') return false;
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
             else throw err;
         }
     );

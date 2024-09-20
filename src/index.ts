@@ -1,20 +1,19 @@
+import * as fsPromises from 'node:fs/promises';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
 
 import createDebug from 'debug';
-import * as fsPromises from 'fs/promises';
 import * as t from 'io-ts';
-import * as path from 'path';
 import puppeteerCore from 'puppeteer-core';
-import sleep from 'sleep-promise';
 import yargs from 'yargs';
 
-import { BrowserWrap, findExistingTabWithDomain, PageWrap, RequestsWaiter } from './puppeteerUtil';
-import type { IItemManifest } from './types/ItemManifest';
-import { ItemManifest } from './types/ItemManifest';
-import type { IMeetingManifest } from './types/MeetingManifest';
-import { MeetingManifest } from './types/MeetingManifest';
-import { fileExists, parseFile, writeJson } from './util/fileUtil';
+import { BrowserWrap, findExistingTabWithDomain, PageWrap, RequestsWaiter } from './puppeteerUtil.js';
+import type { IItemManifest } from './types/ItemManifest.js';
+import { ItemManifest } from './types/ItemManifest.js';
+import type { IMeetingManifest } from './types/MeetingManifest.js';
+import { MeetingManifest } from './types/MeetingManifest.js';
+import { fileExists, parseFile, writeJson } from './util/fileUtil.js';
 
 const debug = createDebug('boarddocs');
 const MONTH_NAMES = [
@@ -220,17 +219,12 @@ async function main() {
                                     categoryId: category
                                         .querySelector(':scope > .category')
                                         ?.getAttribute('unique'),
-                                    categoryOrder: (
-                                        category.querySelector(
-                                            ':scope > .category > span.order'
-                                        ) as HTMLElement | null
-                                    )?.innerText
-                                        .trim()
+                                    categoryOrder: category
+                                        .querySelector<HTMLElement>(':scope > .category > span.order')
+                                        ?.innerText.trim()
                                         .replace(/\.$/, ''),
-                                    categoryName: (
-                                        category.querySelector(
-                                            ':scope > .category > .category-name'
-                                        ) as HTMLElement | null
+                                    categoryName: category.querySelector<HTMLElement>(
+                                        ':scope > .category > .category-name'
                                     )?.innerText,
                                 };
                             })

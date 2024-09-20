@@ -1,6 +1,6 @@
 import * as t from 'io-ts';
 
-import { MeetingItem } from './MeetingManifest';
+import { MeetingItem } from './MeetingManifest.js';
 
 export const Link = t.type(
     {

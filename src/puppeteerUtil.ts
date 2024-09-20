@@ -1,6 +1,8 @@
+import { clearTimeout, setTimeout } from 'node:timers';
+import { URL } from 'node:url';
+
 import createDebug from 'debug';
 import type { Browser, HTTPRequest, Page } from 'puppeteer-core';
-import { URL } from 'url';
 
 const debug = createDebug('boarddocs');
 
@@ -56,7 +58,7 @@ export class RequestsWaiter {
     requests: HTTPRequest[];
     resolve: (() => void) | undefined;
     reject: ((err: Error) => void) | undefined;
-    timer: NodeJS.Timer | undefined;
+    timer: NodeJS.Timeout | undefined;
     name: string;
     // page.off doesn't seem to be working; just ignore any requests after closed
     closed: boolean;
