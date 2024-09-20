@@ -1,7 +1,9 @@
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
+
 import createDebug from 'debug';
 import * as fsPromises from 'fs/promises';
 import * as t from 'io-ts';
-import fetch from 'node-fetch';
 import * as path from 'path';
 import puppeteerCore from 'puppeteer-core';
 import sleep from 'sleep-promise';
@@ -361,8 +363,10 @@ async function main() {
                                         debug('writing attachment', p, 'from', link.href);
                                         await fsPromises.mkdir(path.dirname(p), { recursive: true });
                                         const resp = await fetch(link.href);
-                                        const buffer = await resp.buffer();
-                                        await fsPromises.writeFile(p, buffer);
+                                        await fsPromises.writeFile(
+                                            p,
+                                            Readable.fromWeb(resp.body! as ReadableStream<Uint8Array>)
+                                        );
                                     }
                                 }
 
