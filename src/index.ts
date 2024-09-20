@@ -105,7 +105,7 @@ async function main() {
             const requestsWaiter = new RequestsWaiter(page, 'meetings');
             await page.click('a[href="#tab-meetings"]');
             await requestsWaiter.wait(TIMEOUT);
-            const meetingYearHeaders = await page.$$<HTMLElement>(
+            const meetingYearHeaders = await page.$$(
                 '#meetings > #meeting-accordion > h3.ui-accordion-header > a'
             );
             const texts: string[] = await Promise.all(
