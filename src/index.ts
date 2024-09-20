@@ -113,7 +113,7 @@ async function main() {
                 meetingYearHeaders.map((x) => x.evaluate((node: HTMLElement) => node.innerText.trim()))
             );
             debug('Meeting categories', texts);
-            outer: for (const [i, meetingYearHeader] of meetingYearHeaders.entries()) {
+            for (const [i, meetingYearHeader] of meetingYearHeaders.entries()) {
                 const text = texts[i];
                 if ('Featured' === text) {
                     continue; // skip the featured accordion which is just a subset of other ones
@@ -137,16 +137,15 @@ async function main() {
                 // debug('meetings in year:', text, meetingsInYearTexts);
                 for (const [j, meetingLink] of meetingsInYear.entries()) {
                     const meetingTitle = meetingsInYearTexts[j];
-                    const regexp = /(?<month>\w{3})\ (?<date>\d{1,2}), (?<year>\d{4}) \(\w+\)\n?(?<type>.*)/;
+                    const regexp = /(?<month>\w{3}) (?<date>\d{1,2}), (?<year>\d{4}) \(\w+\)\n?(?<type>.*)/;
                     const titleMatch = regexp.exec(meetingTitle);
                     if (titleMatch === null) {
                         throw Error(`Could not parse ${meetingTitle} using ${regexp}`);
                     }
-                    // @ts-ignore Property does not exist
-                    const { month, date, year, type } = titleMatch.groups;
-                    const monthZeroIdx = MONTH_NAMES.indexOf(month);
+                    const { month, date, year, type } = titleMatch.groups!;
+                    const monthZeroIdx = (MONTH_NAMES as readonly string[]).indexOf(month);
                     const monthOneIdx = monthZeroIdx + 1;
-                    const dateOnly: DateOnly = { year: +year, month: monthOneIdx, date };
+                    const dateOnly: DateOnly = { year: +year, month: monthOneIdx, date: parseInt(date, 10) };
                     const Ymd = `${year}-${String(monthOneIdx).padStart(2, '0')}-${date.padStart(2, '0')}`;
                     const meetingSlug = `${Ymd}-${type.replace(/[^\w]+/g, '-').toLowerCase()}`;
                     const meetingManifestPath = path.join(meetingSlug, 'meeting.json');
@@ -273,7 +272,7 @@ async function main() {
                     for (const category of meetingManifest.categories) {
                         for (const agendaItem of category.items) {
                             const { itemId, itemOrder, itemName } = agendaItem;
-                            let itemSlug = agendaItem.itemSlug;
+                            const itemSlug = agendaItem.itemSlug;
                             let item: IItemManifest | undefined;
                             const itemJsonPath = path.join(meetingSlug, itemSlug, 'item.json');
 

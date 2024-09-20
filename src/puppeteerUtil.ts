@@ -7,20 +7,26 @@ import type { Browser, HTTPRequest, Page } from 'puppeteer-core';
 const debug = createDebug('boarddocs');
 
 export class BrowserWrap {
-    constructor(readonly browser: Browser, readonly shouldClose: boolean) {}
+    constructor(
+        readonly browser: Browser,
+        readonly shouldClose: boolean
+    ) {}
     async close(): Promise<void> {
         if (this.shouldClose) {
             debug('browser.close');
             await this.browser.close();
         } else {
             debug('browser.disconnect');
-            this.browser.disconnect();
+            await this.browser.disconnect();
         }
     }
 }
 
 export class PageWrap {
-    constructor(readonly page: Page, readonly shouldClose: boolean) {}
+    constructor(
+        readonly page: Page,
+        readonly shouldClose: boolean
+    ) {}
     async close(): Promise<void> {
         if (this.shouldClose) {
             debug('closing page');
@@ -115,7 +121,7 @@ export class RequestsWaiter {
             event.method(),
             event.url(),
             event.postData(),
-            event.response()?.status,
+            event.response()?.status(),
             'remaining:',
             this.requests.length
         );
@@ -131,6 +137,7 @@ export class RequestsWaiter {
             event.method(),
             event.url(),
             event.postData(),
+            event.response()?.status(),
             'remaining:',
             this.requests.length
         );
