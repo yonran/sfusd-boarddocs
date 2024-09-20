@@ -5,12 +5,10 @@
   "main": "node --require=ts-node/register src/index.ts",
   "dependencies": {
     "@types/debug": "^4.1.7",
-    "@types/make-dir": "^2.1.0",
     "@types/node-fetch": "^2.5.12",
     "@types/yargs": "^17.0.2",
     "debug": "^4.3.2",
     "io-ts": "^2.2.16",
-    "make-dir": "^3.1.0",
     "node-fetch": "^2.6.2",
     "puppeteer-core": "^10.2.0",
     "sleep-promise": "^9.1.0",

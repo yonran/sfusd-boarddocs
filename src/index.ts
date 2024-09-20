@@ -1,7 +1,6 @@
 import createDebug from 'debug';
 import * as fsPromises from 'fs/promises';
 import * as t from 'io-ts';
-import makeDir from 'make-dir';
 import fetch from 'node-fetch';
 import * as path from 'path';
 import puppeteerCore from 'puppeteer-core';
@@ -360,7 +359,7 @@ async function main() {
                                     } else {
                                         await openItem();
                                         debug('writing attachment', p, 'from', link.href);
-                                        await makeDir(path.dirname(p));
+                                        await fsPromises.mkdir(path.dirname(p), { recursive: true });
                                         const resp = await fetch(link.href);
                                         const buffer = await resp.buffer();
                                         await fsPromises.writeFile(p, buffer);
