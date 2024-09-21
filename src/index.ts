@@ -6,9 +6,16 @@ import type { ReadableStream } from 'node:stream/web';
 import createDebug from 'debug';
 import * as t from 'io-ts';
 import puppeteerCore from 'puppeteer-core';
+import sleep from 'sleep-promise';
 import yargs from 'yargs';
 
-import { BrowserWrap, findExistingTabWithDomain, PageWrap, RequestsWaiter } from './puppeteerUtil.js';
+import {
+    BrowserWrap,
+    findExistingTabWithDomain,
+    PageWrap,
+    RequestsWaiter,
+    RequestsWaiterOnce,
+} from './puppeteerUtil.js';
 import type { IItemManifest } from './types/ItemManifest.js';
 import { ItemManifest } from './types/ItemManifest.js';
 import type { IMeetingManifest } from './types/MeetingManifest.js';
@@ -64,11 +71,15 @@ async function main() {
                 description:
                     'The ws:// url that was printed when you run chrome --remote-debugging-port=9222',
                 string: true,
-                demand: true,
+                // demand: true,
             },
             query: {
                 description: 'substring of the agenda item to filter on e.g. minutes',
                 string: true,
+            },
+            download: {
+                description: 'download attachments',
+                type: 'boolean',
             },
             until: {
                 description: 'max date to download',
@@ -80,15 +91,27 @@ async function main() {
             },
         })
         .parseSync();
-    const browserWrap = new BrowserWrap(
-        await puppeteerCore.connect({
-            browserWSEndpoint: args.browserWSEndpoint,
-            // set defaultViewport to null explicitly; don't change the viewport while attached
-            defaultViewport: null,
-            // slowMo: 100,
-        }),
-        false
-    );
+    const browserWrap =
+        args.browserWSEndpoint == null
+            ? new BrowserWrap(
+                  await puppeteerCore.launch({
+                      executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                      headless: false,
+                      defaultViewport: null,
+                      slowMo: 100,
+                  }),
+                  true
+              )
+            : new BrowserWrap(
+                  await puppeteerCore.connect({
+                      browserWSEndpoint: args.browserWSEndpoint,
+                      // set defaultViewport to null explicitly; don't change the viewport while attached
+                      defaultViewport: null,
+                      // slowMo: 100,
+                  }),
+                  false
+              );
+    debug('connected', browserWrap.browser.connected);
     const SFUSD_URL = 'https://go.boarddocs.com/ca/sfusd/Board.nsf/goto?open&id=BDLAAB25F17C';
     const pageWrap = new PageWrap(await findExistingTabWithDomain(browserWrap.browser, SFUSD_URL), false);
     try {
@@ -103,11 +126,11 @@ async function main() {
 
             debug('clicking meetings tab');
             await page.bringToFront(); // clicking etc. doesn't work unless the page is activated
-            const requestsWaiter = new RequestsWaiter(page, 'meetings');
+            const requestsWaiter = new RequestsWaiterOnce(page, 'meetings');
             await page.click('a[href="#tab-meetings"]');
-            await requestsWaiter.wait(TIMEOUT);
+            await requestsWaiter.waitAndClose(TIMEOUT);
             const meetingYearHeaders = await page.$$(
-                '#meetings > #meeting-accordion > h3.ui-accordion-header > a'
+                '#meetings > #meeting-accordion > section.ui-accordion-header > a'
             );
             const texts: string[] = await Promise.all(
                 meetingYearHeaders.map((x) => x.evaluate((node: HTMLElement) => node.innerText.trim()))
@@ -121,9 +144,9 @@ async function main() {
                 debug('clicking on meetings tab');
                 await page.click('a[href="#tab-meetings"]');
                 debug('clicking on meeting year');
-                const requestsWaiter = new RequestsWaiter(page, 'year');
+                const requestsWaiter = new RequestsWaiterOnce(page, 'year');
                 await meetingYearHeader.click();
-                await requestsWaiter.wait(TIMEOUT);
+                await requestsWaiter.waitAndClose(TIMEOUT);
                 const meetingsInYearTabPanel = await meetingYearHeader.evaluateHandle(
                     (x: Element) => x.parentElement?.nextElementSibling
                 );
@@ -161,21 +184,26 @@ async function main() {
                     }
 
                     async function openMeetingTitlePage(): Promise<string | null> {
-                        debug('clicking meetings tab again');
-                        await page.click('a[href="#tab-meetings"]');
-                        debug('clicking meeting year header again');
-                        {
-                            const requestsWaiter = new RequestsWaiter(page, 'year');
-                            await meetingYearHeader.click();
-                            await requestsWaiter.wait(TIMEOUT);
+                        if (await meetingLink.isHidden()) {
+                            debug('clicking meetings tab again');
+                            await page.click('a[href="#tab-meetings"]');
+                        }
+                        if (await meetingLink.isHidden()) {
+                            debug('clicking meeting year header again');
+                            {
+                                const requestsWaiter = new RequestsWaiterOnce(page, 'year');
+                                await meetingYearHeader.click();
+                                await sleep(500);
+                                await requestsWaiter.waitAndClose(TIMEOUT);
+                            }
                         }
                         debug('clicking on meeting', meetingTitle);
 
-                        {
-                            const requestsWaiter = new RequestsWaiter(page, 'meeting');
-                            await meetingLink.click();
-                            await requestsWaiter.wait(TIMEOUT);
-                        }
+                        const requestsWaiter = new RequestsWaiterOnce(page, 'meeting');
+                        await meetingLink.click();
+                        await sleep(500);
+                        await requestsWaiter.waitAndClose(TIMEOUT);
+
                         // The content panel goes blank while it loads; wait for the share link to show up
                         await page.waitForSelector('#pane-content-meetings button.url');
                         const meetingUrl = await page.$eval('#pane-content-meetings button.url', (x) =>
@@ -195,19 +223,27 @@ async function main() {
                         const agendaButton = await page.$('a#btn-view-agenda');
                         if (agendaButton !== null) {
                             debug('clicking agenda for', meetingSlug);
-                            const requestsWaiter = new RequestsWaiter(page, 'agenda');
+                            const requestsWaiter = new RequestsWaiterOnce(page, 'agenda');
                             await agendaButton.click();
-                            await requestsWaiter.wait(TIMEOUT);
+                            await sleep(500);
+                            await requestsWaiter.waitAndClose(TIMEOUT);
                         } else {
                             throw Error('Could not find agenda button for ' + meetingSlug);
                         }
                     }
 
-                    let meetingManifest: IMeetingManifest;
+                    let meetingManifest: IMeetingManifest | undefined = undefined;
                     if (await fileExists(meetingManifestPath)) {
                         meetingManifest = await parseFile(meetingManifestPath, MeetingManifest);
                         debug('read meeting manifest', meetingManifestPath);
-                    } else {
+                        if (!meetingManifest.categories.some((x) => x.items.length > 0)) {
+                            debug(
+                                'reloading meeting since all the items are null; it must have been scraped previously with incorrect item selector'
+                            );
+                            meetingManifest = undefined;
+                        }
+                    }
+                    if (meetingManifest === undefined) {
                         const meetingUrl = await openMeetingTitlePage();
                         await openMeetingAgenda(true);
 
@@ -231,7 +267,7 @@ async function main() {
                         const categoriesWithItems = [];
                         for (const category of agendaCategories) {
                             const items = await page.$$eval(
-                                `#agenda > .wrap-category > .category[unique="${category.categoryId}"] + .wrap-items > div.item`,
+                                `#agenda > .wrap-category > .category[unique="${category.categoryId}"] + .wrap-items > li.item`,
                                 (els) =>
                                     els.map((el) => {
                                         const div = el as HTMLElement;
@@ -270,101 +306,132 @@ async function main() {
                     }
 
                     for (const category of meetingManifest.categories) {
-                        for (const agendaItem of category.items) {
-                            const { itemId, itemOrder, itemName } = agendaItem;
-                            const itemSlug = agendaItem.itemSlug;
-                            let item: IItemManifest | undefined;
-                            const itemJsonPath = path.join(meetingSlug, itemSlug, 'item.json');
+                        const requestsWaiter = new RequestsWaiter(page, 'item');
+                        try {
+                            for (const agendaItem of category.items) {
+                                const { itemId, itemOrder, itemName } = agendaItem;
+                                const itemSlug = agendaItem.itemSlug;
+                                let item: IItemManifest | undefined;
+                                const itemJsonPath = path.join(meetingSlug, itemSlug, 'item.json');
 
-                            if (
-                                args.query !== undefined &&
-                                !itemName.toLowerCase().includes(args.query.toLowerCase())
-                            ) {
-                                debug('skipping agenda item that does not match query', itemName);
-                                continue;
-                            }
-
-                            let didOpenItem = false;
-                            async function openItem() {
-                                if (didOpenItem) {
-                                    return;
+                                if (
+                                    args.query !== undefined &&
+                                    !itemName.toLowerCase().includes(args.query.toLowerCase())
+                                ) {
+                                    debug('skipping agenda item that does not match query', itemName);
+                                    continue;
                                 }
-                                didOpenItem = true;
-                                await openMeetingAgenda(false);
-                                // find the item again to avoid Error: Node is detached from document
-                                const itemLinkSelector = `#agenda > .wrap-category > .wrap-items > div.item[unique="${itemId}"]`;
-                                debug(
-                                    'clicking on item link',
-                                    Ymd,
-                                    category.categoryOrder,
-                                    itemOrder,
-                                    itemName,
-                                    itemLinkSelector
-                                );
-                                const requestsWaiter = new RequestsWaiter(page, 'item');
-                                await page.click(itemLinkSelector);
-                                await requestsWaiter.wait(TIMEOUT);
-                                const selector = `#agenda-content input[name=agenda-item-unique][value="${itemId}"]`;
-                                debug(`waiting for ${selector}`);
-                                await page.waitForSelector(selector);
-                                // apparently waiting for the input is not sufficient; the rest of the item still needs to load
-                                await page.waitForSelector('#agenda-content button.url');
-                            }
-                            if (await fileExists(itemJsonPath)) {
-                                item = await parseFile(itemJsonPath, ItemManifest);
-                                debug('read items json', itemJsonPath);
-                            }
-                            if (item === undefined || item.innerHtml === undefined) {
-                                await openItem();
-                                const itemUrl = await page.$eval('#agenda-content button.url', (x) =>
-                                    x.getAttribute('data-clipboard-text')
-                                );
-                                const innerHtml = await page.$eval('#view-agenda-item', (x) => x.innerHTML);
-                                const links = await page.$$eval(
-                                    '#agenda-content a.public-file',
-                                    (els: Element[]) =>
-                                        els.map((el) => {
-                                            const a = el as HTMLAnchorElement;
-                                            return {
-                                                order: a.getAttribute('order')?.trim().replace(/\.$/, ''),
-                                                unique: a.getAttribute('unique'),
-                                                href: a.href,
-                                                text: a.innerText,
-                                                filename: decodeURIComponent(
-                                                    new URL(a.href).pathname
-                                                ).replace(/.*\//, ''),
-                                            };
-                                        })
-                                );
-                                item = {
-                                    ...agendaItem,
-                                    itemUrl,
-                                    links,
-                                    innerHtml,
-                                };
-                                debug('writing items json', itemJsonPath);
-                                await writeJson(itemJsonPath, item, t.exact(ItemManifest));
-                            }
 
-                            if (item.links.length > 0) {
-                                for (const link of item.links) {
-                                    const p = path.join(meetingSlug, agendaItem.itemSlug, link.filename);
-                                    if (await fileExists(p)) {
-                                        debug('File already exists; skipping', p);
-                                    } else {
-                                        await openItem();
-                                        debug('writing attachment', p, 'from', link.href);
-                                        await fsPromises.mkdir(path.dirname(p), { recursive: true });
-                                        const resp = await fetch(link.href);
-                                        await fsPromises.writeFile(
-                                            p,
-                                            Readable.fromWeb(resp.body! as ReadableStream<Uint8Array>)
-                                        );
+                                let didOpenItem = false;
+                                async function openItem() {
+                                    if (didOpenItem) {
+                                        return;
+                                    }
+                                    didOpenItem = true;
+                                    await openMeetingAgenda(false);
+                                    // find the item again to avoid Error: Node is detached from document
+                                    const itemLinkSelector = `#agenda > .wrap-category > .wrap-items > li.item[unique="${itemId}"]`;
+                                    debug(
+                                        'clicking on item link',
+                                        Ymd,
+                                        category.categoryOrder,
+                                        itemOrder,
+                                        itemName,
+                                        itemLinkSelector
+                                    );
+                                    // the link does not reliably load the item content on the first click
+                                    // so just click a few times
+                                    const selector = `#agenda-content input[name=agenda-item-unique][value="${itemId}"]`;
+                                    let n = 0;
+                                    while (true) {
+                                        await sleep(500);
+                                        await requestsWaiter.wait(TIMEOUT);
+                                        await (await page.$(itemLinkSelector))?.scrollIntoView();
+                                        await page.click(itemLinkSelector);
+                                        await requestsWaiter.wait(TIMEOUT);
+                                        try {
+                                            debug(`waiting for ${selector}`);
+                                            await page.waitForSelector(selector, { timeout: 1000 * (n + 1) });
+                                            // apparently waiting for the input is not sufficient; the rest of the item still needs to load
+                                            await page.waitForSelector('#agenda-content button.url', {
+                                                timeout: 1000 * (n + 1),
+                                            });
+                                            break;
+                                        } catch (e) {
+                                            if (
+                                                (e as puppeteerCore.TimeoutError).name === 'TimeoutError' &&
+                                                n < 5
+                                            ) {
+                                                debug('retrying click on item link', e);
+                                                await sleep(500);
+                                            } else {
+                                                debug('unknown error or too many timeouts; rethrowing');
+                                                throw e;
+                                            }
+                                        }
+                                        n++;
                                     }
                                 }
+                                if (await fileExists(itemJsonPath)) {
+                                    item = await parseFile(itemJsonPath, ItemManifest);
+                                    debug('read items json', itemJsonPath);
+                                }
+                                if (item === undefined || item.innerHtml === undefined) {
+                                    await openItem();
+                                    const itemUrl = await page.$eval('#agenda-content button.url', (x) =>
+                                        x.getAttribute('data-clipboard-text')
+                                    );
+                                    const innerHtml = await page.$eval(
+                                        '#view-agenda-item',
+                                        (x) => x.innerHTML
+                                    );
+                                    const links = await page.$$eval(
+                                        '#agenda-content a.public-file',
+                                        (els: Element[]) =>
+                                            els.map((el) => {
+                                                const a = el as HTMLAnchorElement;
+                                                return {
+                                                    order: a.getAttribute('order')?.trim().replace(/\.$/, ''),
+                                                    unique: a.getAttribute('unique'),
+                                                    href: a.href,
+                                                    text: a.innerText,
+                                                    filename: decodeURIComponent(
+                                                        new URL(a.href).pathname
+                                                    ).replace(/.*\//, ''),
+                                                };
+                                            })
+                                    );
+                                    item = {
+                                        ...agendaItem,
+                                        itemUrl,
+                                        links,
+                                        innerHtml,
+                                    };
+                                    debug('writing items json', itemJsonPath);
+                                    await writeJson(itemJsonPath, item, t.exact(ItemManifest));
+                                }
 
-                                // break outer;
+                                if (item.links.length > 0 && args.download) {
+                                    for (const link of item.links) {
+                                        const p = path.join(meetingSlug, agendaItem.itemSlug, link.filename);
+                                        if (await fileExists(p)) {
+                                            debug('File already exists; skipping', p);
+                                        } else {
+                                            await openItem();
+                                            debug('writing attachment', p, 'from', link.href);
+                                            await fsPromises.mkdir(path.dirname(p), { recursive: true });
+                                            const resp = await fetch(link.href);
+                                            await fsPromises.writeFile(
+                                                p,
+                                                Readable.fromWeb(resp.body! as ReadableStream<Uint8Array>)
+                                            );
+                                        }
+                                    }
+                                    // break outer;
+                                }
                             }
+                        } finally {
+                            requestsWaiter.close();
                         }
                     }
                     // const viewMinutesLink = await page.$('a.btn-view-minutes')
