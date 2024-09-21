@@ -1,0 +1,8 @@
+# same as .gitignore
+20*/
+node_modules/
+.vscode/
+
+# files that are managed by other tools
+package.json
+package-lock.json
